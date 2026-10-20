@@ -1,0 +1,15 @@
+# Peer firm used for market comps and the profile-swap demo. Not affiliated.
+# bonding_capacity is an illustrative assumption.
+name: M. A. Mortenson (peer)
+description: Builder, developer and engineering firm; healthcare, sports, renewable energy, federal work.
+recipient_names: ["M. A. MORTENSON"]
+naics: ["236220", "236210"]
+regions: [MN, WI, CO, AZ, WA, IL, NM, TX, IA]
+building_types: [hospital, medical_office, office, data_center, education, laboratory]
+bonding_capacity: 1500000000
+set_aside_eligibility: []
+is_demo_peer: true
+sources:
+  - type: usaspending
+    naics: ["236220", "236210"]
+    max_records: 120

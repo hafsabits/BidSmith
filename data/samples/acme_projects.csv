@@ -1,0 +1,13 @@
+id,title,client,award_value,start_date,end_date,city,state,naics,building_type,description
+A01,Rochester Outpatient Clinic Build-Out,Fictional County Health,6800000,2019-04-01,2020-06-30,Rochester,MN,236220,medical_office,"FICTIONAL SAMPLE. 22,000 SF outpatient clinic tenant build-out with imaging suite, design-bid-build."
+A02,St. Cloud Light Industrial Warehouse,Fictional Logistics Co,11200000,2020-03-01,2021-02-28,St. Cloud,MN,236210,warehouse,"FICTIONAL SAMPLE. 140,000 SF tilt-up warehouse with 32 ft clear height and 24 dock doors."
+A03,Fargo Fire Station No. 9,City of Fargo (fictional record),8400000,2021-05-01,2022-08-31,Fargo,ND,236220,public_safety,"FICTIONAL SAMPLE. Three-bay fire station, 18,000 SF, LEED Silver, CM at risk."
+A04,Eau Claire Municipal Office Renovation,Fictional City of Eau Claire,3900000,2018-06-01,2019-03-31,Eau Claire,WI,236220,office,"FICTIONAL SAMPLE. Occupied renovation of a 40,000 SF municipal office building, phased over 4 stages."
+A05,Sioux Falls Dental Clinic,Fictional Dental Partners,2600000,2022-02-01,2022-11-30,Sioux Falls,SD,236220,medical_office,"FICTIONAL SAMPLE. New 9,000 SF dental clinic, design-build."
+A06,Duluth Community Library Addition,Fictional Duluth Public Library,5100000,2017-07-01,2018-09-30,Duluth,MN,236220,education,"FICTIONAL SAMPLE. 15,000 SF addition and renovation, masonry and curtain wall."
+A07,Moorhead Cold Storage Expansion,Fictional Foods Inc,9700000,2023-01-15,2023-12-20,Moorhead,MN,236210,warehouse,"FICTIONAL SAMPLE. 60,000 SF freezer/cooler expansion with insulated metal panels."
+A08,Bemidji Tribal Health Clinic,Fictional Tribal Health Authority,12300000,2021-09-01,2023-03-31,Bemidji,MN,236220,medical_office,"FICTIONAL SAMPLE. 34,000 SF primary care clinic, federal funding, Davis-Bacon wages."
+A09,La Crosse VA Parking Lot and Site Improvements,Fictional federal client,1800000,2022-05-01,2022-10-31,La Crosse,WI,237310,other,"FICTIONAL SAMPLE. Site work, paving, lighting for an outpatient clinic campus."
+A10,Mankato Police Training Facility,Fictional City of Mankato,7600000,2019-08-01,2020-12-15,Mankato,MN,236220,public_safety,"FICTIONAL SAMPLE. 25,000 SF training facility with indoor range."
+A11,Grand Forks Elementary School Addition,Fictional School District,14500000,2022-04-01,2023-08-15,Grand Forks,ND,236220,education,"FICTIONAL SAMPLE. 38,000 SF classroom addition, summer-phased."
+A12,Brainerd Medical Office Building,Fictional Lakes Health,10400000,2023-06-01,2024-09-30,Brainerd,MN,236220,medical_office,"FICTIONAL SAMPLE. Two-story 30,000 SF MOB, core and shell plus tenant fit-out."

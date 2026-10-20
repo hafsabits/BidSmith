@@ -1,0 +1,11 @@
+# FICTIONAL company. Shows how any firm plugs in its own data: a CSV export instead of USAspending.
+name: Acme Builders (fictional)
+description: Fictional small-business general contractor in the Upper Midwest focused on clinics, light industrial, and municipal buildings.
+naics: ["236220", "236210"]
+regions: [MN, WI, ND, SD]
+building_types: [medical_office, warehouse, office, public_safety, education]
+bonding_capacity: 40000000
+set_aside_eligibility: ["SBA", "Total Small Business Set-Aside (FAR 19.5)"]
+sources:
+  - type: csv
+    path: data/samples/acme_projects.csv

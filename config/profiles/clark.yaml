@@ -1,0 +1,14 @@
+# Peer firm used for market comps. Not affiliated. bonding_capacity is illustrative.
+name: Clark Construction (peer)
+description: General contractor with major federal, healthcare and infrastructure work.
+recipient_names: ["CLARK CONSTRUCTION GROUP"]
+naics: ["236220"]
+regions: [MD, VA, DC, CA, IL, GA, TX]
+building_types: [office, hospital, laboratory, education, public_safety, parking_garage]
+bonding_capacity: 2000000000
+set_aside_eligibility: []
+is_demo_peer: true
+sources:
+  - type: usaspending
+    naics: ["236220", "236210"]
+    max_records: 120

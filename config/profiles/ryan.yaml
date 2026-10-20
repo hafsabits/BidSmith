@@ -1,0 +1,17 @@
+# Demo profile. BidSmith is not affiliated with Ryan Companies US, Inc.
+# Knowledge base = Ryan's public federal award history from USAspending.gov.
+# bonding_capacity and weights are illustrative assumptions, not sourced figures.
+name: Ryan Companies (demo)
+description: >
+  Commercial real estate firm offering end-to-end services: development, architecture
+  and engineering, design-build construction, capital markets, and property management.
+  Strong in office, industrial, healthcare, senior living, and multifamily.
+recipient_names: ["RYAN COMPANIES US"]
+naics: ["236220", "236210", "531120", "531312", "541310"]
+regions: [MN, IA, WI, IL, AZ, TX, CO, FL, CA, ND, SD, NE]
+building_types: [office, warehouse, manufacturing, medical_office, hospital, senior_living, multifamily, retail, data_center, parking_garage]
+bonding_capacity: 750000000
+set_aside_eligibility: []
+sources:
+  - type: usaspending
+    max_records: 100

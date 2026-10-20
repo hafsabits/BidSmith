@@ -1,0 +1,14 @@
+# Peer firm used for market comps. Not affiliated. bonding_capacity is illustrative.
+name: Brasfield & Gorrie (peer)
+description: Southeast general contractor; healthcare, federal, industrial.
+recipient_names: ["BRASFIELD & GORRIE"]
+naics: ["236220"]
+regions: [AL, GA, FL, TN, NC, SC, TX, MS]
+building_types: [hospital, medical_office, office, warehouse, manufacturing]
+bonding_capacity: 1000000000
+set_aside_eligibility: []
+is_demo_peer: true
+sources:
+  - type: usaspending
+    naics: ["236220", "236210"]
+    max_records: 120
