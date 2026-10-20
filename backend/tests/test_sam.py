@@ -38,6 +38,8 @@ def mock_client(calls: list, search_status=200):
             if search_status != 200:
                 return httpx.Response(search_status, text="nope")
             return httpx.Response(200, json={"totalRecords": 1, "opportunitiesData": [ITEM]})
+        if request.url.params.get("noticeid") != "abc123" or request.url.params.get("api_key") != "test-key":
+            return httpx.Response(404)
         return httpx.Response(200, json={"description": "<p>Build a 45,000 SF clinic.</p>"})
 
     return httpx.Client(transport=httpx.MockTransport(handler))

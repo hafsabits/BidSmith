@@ -69,6 +69,11 @@ def test_set_aside_categories():
     assert set_aside_category("Service-Disabled Veteran-Owned Small Business Set-Aside") == "sdvosb"
     assert set_aside_category("Total Small Business Set-Aside (FAR 19.5)") == "small_business"
     assert set_aside_category(None) is None
+    # Real SAM.gov values
+    assert set_aside_category("No Set aside used") is None
+    assert set_aside_category("8(a) Set-Aside (FAR 19.8)") == "8a"
+    assert set_aside_category("SBA Certified Women-Owned Small Business (WOSB) Program Set-Aside (FAR 19.15)") == "wosb"
+    assert set_aside_category("Small Business Set Aside - Total") == "small_business"
     assert is_eligible(profile(set_aside_eligibility=["small_business"]), "Total Small Business Set-Aside (FAR 19.5)")
     assert not is_eligible(profile(set_aside_eligibility=["small_business"]), "SDVOSB Set-Aside")
 

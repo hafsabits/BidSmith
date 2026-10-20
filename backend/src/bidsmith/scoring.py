@@ -1,6 +1,7 @@
 """Bid/no-bid math. The fit agent supplies per-criterion scores with evidence;
 this module applies weights, hard gates, and thresholds."""
 
+import re
 from datetime import datetime, timezone
 
 from bidsmith.schemas import CompanyProfile, Decision, FitAssessment, FitResult, Opportunity, RfpAnalysis
@@ -21,7 +22,7 @@ def set_aside_category(text: str | None) -> str | None:
     if not text:
         return None
     lowered = text.lower()
-    if "none" in lowered or "full and open" in lowered:
+    if "none" in lowered or "full and open" in lowered or re.search(r"\bno set[- ]?aside", lowered):
         return None
     for category, needles in SET_ASIDE_CATEGORIES:
         if any(n in lowered for n in needles):

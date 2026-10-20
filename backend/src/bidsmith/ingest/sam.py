@@ -92,6 +92,15 @@ def _check(resp: httpx.Response) -> dict:
     return resp.json()
 
 
+def _description_priority(entry: tuple[dict, str | None]) -> tuple:
+    item = entry[0]
+    deadline = _parse_dt(item.get("responseDeadLine"))
+    now = datetime.now(deadline.tzinfo) if deadline and deadline.tzinfo else datetime.now()
+    is_open = deadline is not None and deadline > now
+    is_solicitation = (item.get("type") or "").lower() in ("solicitation", "combined synopsis/solicitation")
+    return (not is_open, not is_solicitation, deadline.timestamp() if deadline else float("inf"))
+
+
 class _Budget:
     def __init__(self, limit: int):
         self.limit, self.used = limit, 0
@@ -144,13 +153,16 @@ def fetch_opportunities(
             for item in body.get("opportunitiesData") or []:
                 found.append((item, item.get("description")))
 
+        # Spend scarce description requests on open solicitations first, soonest deadline first.
+        found.sort(key=_description_priority)
         new = updated = described = 0
         for item, desc_url in found:
             notice_id = item["noticeId"]
             previous = existing.get(notice_id)
             description = previous.description if previous else ""
             if with_descriptions and not description and desc_url and desc_url.startswith("http") and budget.take():
-                d = client.get(desc_url, params={"api_key": settings.sam_api_key})
+                # Merge, don't replace: the link already carries ?noticeid=...
+                d = client.get(httpx.URL(desc_url).copy_merge_params({"api_key": settings.sam_api_key}))
                 if d.status_code == 200:
                     description = _strip_html(d.json().get("description", ""))
                     described += 1
