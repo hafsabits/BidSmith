@@ -21,3 +21,4 @@ frontend/dist/
 # Local run artifacts
 runs/
 .claude/
+*.tsbuildinfo
