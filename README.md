@@ -96,11 +96,20 @@ Or run one opportunity from the command line:
 
 ### Real SAM.gov opportunities
 
-The repo ships 10 **illustrative sample** opportunities (IDs start with `SAMPLE-`) so it runs without a key. To pull real ones, get a free API key from your SAM.gov account settings, put it in `.env` as `SAM_API_KEY`, and run:
+The repo ships 10 **illustrative sample** opportunities (IDs start with `SAMPLE-`) so it runs without a key. To pull real ones, set two values in `.env`:
+
+| `SAM_ENV` | API host | Where to get the key | Data |
+|---|---|---|---|
+| `alpha` | `api-alpha.sam.gov` | Account Details on **alpha.sam.gov** | Prod-like test data, for apps not yet deployed |
+| `production` | `api.sam.gov` | Account Details on **sam.gov** | Live federal notices |
+
+Keys only work in the environment that issued them. Then run:
 
 ```bash
 make fetch-sam
 ```
+
+Public keys allow only a few requests per day, so the fetcher works within a request budget (`SAM_MAX_REQUESTS`, default 8). Each NAICS search costs one request, and each notice's description costs one more. Results merge into `data/fixtures/sam_live_<env>.json`, and descriptions already saved are never requested again. If a run hits the limit, run it again the next day to fill in the rest. Live notices are listed before the samples; set `INCLUDE_SAMPLE_OPPORTUNITIES=false` to hide the samples.
 
 ## Bring your own company
 

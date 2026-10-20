@@ -12,6 +12,9 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str | None = None
     sam_api_key: str | None = None
+    sam_env: str = "production"  # "production" (sam.gov key) or "alpha" (alpha.sam.gov prod-like key)
+    sam_max_requests: int = 8  # per fetch; public keys allow only a few requests per day
+    include_sample_opportunities: bool = True
     database_url: str = "postgresql+psycopg://bidsmith:bidsmith@localhost:5433/bidsmith"
 
     model_fast: str = "claude-haiku-5-5"
@@ -34,7 +37,13 @@ class Settings(BaseSettings):
 
     @property
     def sam_fixture(self) -> Path:
+        """Bundled illustrative samples (SAMPLE-* ids)."""
         return self.data_dir / "fixtures" / "sam_opportunities.json"
+
+    @property
+    def sam_live_file(self) -> Path:
+        """Results of `bidsmith fetch-sam`, kept separate so samples are never overwritten."""
+        return self.data_dir / "fixtures" / f"sam_live_{self.sam_env}.json"
 
 
 @lru_cache

@@ -27,12 +27,29 @@ def ingest(profile: str = typer.Option("all", help="Profile id, or 'all'")):
 
 
 @app.command("fetch-sam")
-def fetch_sam(days_back: int = 60, per_naics: int = 30):
-    """Pull recent opportunities from SAM.gov into data/fixtures (needs SAM_API_KEY)."""
-    from bidsmith.ingest.sam import fetch_opportunities
+def fetch_sam(
+    days_back: int = 60,
+    per_naics: int = 25,
+    naics: list[str] = typer.Option(None, help="NAICS codes to search (repeatable). Default: 236220, 236210"),
+    max_requests: int = typer.Option(None, help="Request budget for this run (default SAM_MAX_REQUESTS)"),
+    descriptions: bool = typer.Option(True, help="Also fetch description text (one request per notice)"),
+):
+    """Pull recent opportunities from SAM.gov (SAM_ENV=production|alpha, needs SAM_API_KEY).
 
-    opps = fetch_opportunities(days_back=days_back, per_naics=per_naics)
-    typer.echo(f"Saved {len(opps)} opportunities.")
+    Safe to re-run: results merge into the saved file and descriptions already fetched are reused,
+    so a second run tomorrow fills in what today's request limit cut off."""
+    from bidsmith.ingest.sam import SamApiError, fetch_opportunities
+
+    try:
+        summary = fetch_opportunities(
+            naics=naics or None, days_back=days_back, per_naics=per_naics, max_requests=max_requests, with_descriptions=descriptions
+        )
+    except SamApiError as exc:
+        typer.secho(str(exc), fg="red")
+        raise typer.Exit(1)
+    typer.echo(json.dumps(summary, indent=2))
+    if summary["missing_descriptions"]:
+        typer.echo("Some notices have no description yet; run fetch-sam again later to fill them in.")
 
 
 @app.command()
