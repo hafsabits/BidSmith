@@ -1,0 +1,164 @@
+archetype,division,name,pct
+office,01,"General Requirements",8
+office,02,"Existing Conditions",1
+office,03,"Concrete",9
+office,04,"Masonry",2
+office,05,"Metals",9
+office,06,"Wood, Plastics & Composites",2
+office,07,"Thermal & Moisture Protection",6
+office,08,"Openings",8
+office,09,"Finishes",9
+office,10,"Specialties",1
+office,11,"Equipment",1
+office,12,"Furnishings",1
+office,14,"Conveying Equipment",3
+office,21,"Fire Suppression",2
+office,22,"Plumbing",4
+office,23,"HVAC",12
+office,25,"Integrated Automation",1
+office,26,"Electrical",10
+office,27,"Communications",2
+office,28,"Electronic Safety & Security",2
+office,31,"Earthwork",3
+office,32,"Exterior Improvements",3
+office,33,"Utilities",1
+industrial,01,"General Requirements",7
+industrial,02,"Existing Conditions",1
+industrial,03,"Concrete",18
+industrial,04,"Masonry",1
+industrial,05,"Metals",16
+industrial,06,"Wood, Plastics & Composites",1
+industrial,07,"Thermal & Moisture Protection",10
+industrial,08,"Openings",5
+industrial,09,"Finishes",3
+industrial,10,"Specialties",1
+industrial,11,"Equipment",3
+industrial,21,"Fire Suppression",4
+industrial,22,"Plumbing",3
+industrial,23,"HVAC",6
+industrial,25,"Integrated Automation",1
+industrial,26,"Electrical",9
+industrial,27,"Communications",1
+industrial,28,"Electronic Safety & Security",1
+industrial,31,"Earthwork",5
+industrial,32,"Exterior Improvements",4
+healthcare,01,"General Requirements",9
+healthcare,02,"Existing Conditions",1
+healthcare,03,"Concrete",7
+healthcare,04,"Masonry",2
+healthcare,05,"Metals",7
+healthcare,06,"Wood, Plastics & Composites",2
+healthcare,07,"Thermal & Moisture Protection",5
+healthcare,08,"Openings",6
+healthcare,09,"Finishes",8
+healthcare,10,"Specialties",2
+healthcare,11,"Equipment",4
+healthcare,12,"Furnishings",1
+healthcare,14,"Conveying Equipment",2
+healthcare,21,"Fire Suppression",2
+healthcare,22,"Plumbing",7
+healthcare,23,"HVAC",13
+healthcare,25,"Integrated Automation",2
+healthcare,26,"Electrical",10
+healthcare,27,"Communications",3
+healthcare,28,"Electronic Safety & Security",2
+healthcare,31,"Earthwork",2
+healthcare,32,"Exterior Improvements",2
+healthcare,33,"Utilities",1
+lab,01,"General Requirements",9
+lab,02,"Existing Conditions",1
+lab,03,"Concrete",7
+lab,04,"Masonry",1
+lab,05,"Metals",7
+lab,06,"Wood, Plastics & Composites",2
+lab,07,"Thermal & Moisture Protection",4
+lab,08,"Openings",5
+lab,09,"Finishes",5
+lab,10,"Specialties",1
+lab,11,"Equipment",6
+lab,12,"Furnishings",2
+lab,14,"Conveying Equipment",1
+lab,21,"Fire Suppression",2
+lab,22,"Plumbing",9
+lab,23,"HVAC",20
+lab,25,"Integrated Automation",3
+lab,26,"Electrical",10
+lab,27,"Communications",2
+lab,28,"Electronic Safety & Security",1
+lab,31,"Earthwork",1
+lab,32,"Exterior Improvements",1
+data_center,01,"General Requirements",7
+data_center,03,"Concrete",8
+data_center,05,"Metals",6
+data_center,07,"Thermal & Moisture Protection",3
+data_center,08,"Openings",2
+data_center,09,"Finishes",2
+data_center,10,"Specialties",1
+data_center,11,"Equipment",2
+data_center,21,"Fire Suppression",2
+data_center,22,"Plumbing",2
+data_center,23,"HVAC",25
+data_center,25,"Integrated Automation",4
+data_center,26,"Electrical",30
+data_center,27,"Communications",3
+data_center,28,"Electronic Safety & Security",2
+data_center,31,"Earthwork",1
+residential,01,"General Requirements",8
+residential,02,"Existing Conditions",1
+residential,03,"Concrete",10
+residential,04,"Masonry",3
+residential,05,"Metals",5
+residential,06,"Wood, Plastics & Composites",10
+residential,07,"Thermal & Moisture Protection",7
+residential,08,"Openings",7
+residential,09,"Finishes",12
+residential,10,"Specialties",2
+residential,11,"Equipment",2
+residential,12,"Furnishings",1
+residential,14,"Conveying Equipment",2
+residential,21,"Fire Suppression",2
+residential,22,"Plumbing",7
+residential,23,"HVAC",8
+residential,26,"Electrical",7
+residential,27,"Communications",1
+residential,28,"Electronic Safety & Security",1
+residential,31,"Earthwork",2
+residential,32,"Exterior Improvements",2
+parking,01,"General Requirements",8
+parking,03,"Concrete",45
+parking,05,"Metals",5
+parking,07,"Thermal & Moisture Protection",4
+parking,08,"Openings",1
+parking,09,"Finishes",2
+parking,10,"Specialties",1
+parking,14,"Conveying Equipment",4
+parking,21,"Fire Suppression",4
+parking,22,"Plumbing",2
+parking,23,"HVAC",2
+parking,26,"Electrical",8
+parking,28,"Electronic Safety & Security",2
+parking,31,"Earthwork",6
+parking,32,"Exterior Improvements",5
+parking,33,"Utilities",1
+civic,01,"General Requirements",8
+civic,02,"Existing Conditions",1
+civic,03,"Concrete",8
+civic,04,"Masonry",6
+civic,05,"Metals",8
+civic,06,"Wood, Plastics & Composites",2
+civic,07,"Thermal & Moisture Protection",7
+civic,08,"Openings",7
+civic,09,"Finishes",9
+civic,10,"Specialties",2
+civic,11,"Equipment",3
+civic,12,"Furnishings",1
+civic,14,"Conveying Equipment",1
+civic,21,"Fire Suppression",2
+civic,22,"Plumbing",5
+civic,23,"HVAC",11
+civic,25,"Integrated Automation",1
+civic,26,"Electrical",10
+civic,27,"Communications",2
+civic,28,"Electronic Safety & Security",2
+civic,31,"Earthwork",2
+civic,32,"Exterior Improvements",2

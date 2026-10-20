@@ -5,7 +5,7 @@ naics: ["236220", "236210"]
 regions: [MN, WI, ND, SD]
 building_types: [medical_office, warehouse, office, public_safety, education]
 bonding_capacity: 40000000
-set_aside_eligibility: ["SBA", "Total Small Business Set-Aside (FAR 19.5)"]
+set_aside_eligibility: [small_business]
 sources:
   - type: csv
     path: data/samples/acme_projects.csv

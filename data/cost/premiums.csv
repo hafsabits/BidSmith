@@ -1,0 +1,8 @@
+key,pct,description
+sustainability_cert,0.02,LEED / Green Globes certification requirements
+security_hardening,0.05,ISC / ATFP / FSL security hardening
+occupied_renovation,0.12,Phasing and protection while the facility stays occupied
+infection_control,0.04,ICRA Class III/IV infection control measures
+extreme_climate,0.03,Cold-weather or hurricane-resistant construction provisions
+remote_site,0.05,Remote site logistics and labor availability
+prevailing_wage,0.03,Davis-Bacon prevailing wage premium over an open-shop baseline

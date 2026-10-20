@@ -1,0 +1,15 @@
+building_type,archetype,low,typical,high,typical_sf
+office,office,280,350,450,80000
+warehouse,industrial,110,150,200,150000
+manufacturing,industrial,180,250,350,100000
+medical_office,healthcare,380,460,580,40000
+hospital,healthcare,750,950,1250,200000
+laboratory,lab,650,850,1100,80000
+senior_living,healthcare,280,350,450,100000
+multifamily,residential,240,300,380,150000
+retail,civic,200,260,340,40000
+data_center,data_center,900,1200,1600,100000
+parking_garage,parking,90,120,160,200000
+education,civic,320,400,500,80000
+public_safety,civic,400,500,650,30000
+other,office,250,330,430,50000

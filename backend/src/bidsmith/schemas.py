@@ -222,6 +222,8 @@ class EstimateInputs(BaseModel):
     city: str | None = None
     quality: Quality = "typical"
     construction_midpoint_year: float
+    design_build: bool = False
+    premiums: list[str] = []  # keys from data/cost/premiums.csv
 
 
 class Estimate(BaseModel):
