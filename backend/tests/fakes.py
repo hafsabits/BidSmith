@@ -9,7 +9,7 @@ from bidsmith.schemas import (
     ProposalSection,
     QualitativeRisk,
     QualitativeRisks,
-    RfpAnalysis,
+    RfpExtraction,
     UsageRecord,
 )
 
@@ -23,18 +23,25 @@ class FakeLLM:
         self.score = score
 
     def structured(self, node, model, system, user, schema, **kw):
-        if schema is RfpAnalysis:
-            out = RfpAnalysis(
+        if schema is RfpExtraction:
+            out = RfpExtraction(
                 scope_summary="New outpatient clinic",
                 building_type="medical_office",
                 gross_sf=45_000,
                 sf_is_stated=True,
-                state="MN",
+                assumed_sf_if_missing=0,
+                city="",
+                state="mn",
+                quality="typical",
                 construction_start_year=2027,
                 duration_months=20,
                 magnitude_low=25_000_000,
                 magnitude_high=50_000_000,
+                set_aside="",
                 delivery_method="design-build",
+                evaluation_criteria=[],
+                special_requirements=[],
+                key_requirements=[],
             )
         elif schema is FitAssessment:
             out = FitAssessment(

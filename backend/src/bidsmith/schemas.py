@@ -149,6 +149,40 @@ class RfpAnalysis(BaseModel):
     key_requirements: list[str] = []
 
 
+class RfpExtraction(BaseModel):
+    """What the analyst model returns. Every field is required and non-nullable, because
+    nullable unions make the structured-output schema too complex for the API.
+    Unknown values are "" or 0; `to_analysis()` turns them into None."""
+
+    scope_summary: str
+    building_type: BuildingType
+    gross_sf: int = Field(description="Gross square feet if stated or clearly implied, else 0")
+    sf_is_stated: bool = Field(description="True only if the solicitation states the size explicitly")
+    assumed_sf_if_missing: int = Field(description="If size is not stated, a reasonable assumption for this facility type; else 0")
+    city: str = Field(description='City, or "" if unknown')
+    state: str = Field(description='Two-letter state code, or "" if unknown')
+    quality: Quality
+    construction_start_year: int = Field(description="Expected construction start year, or 0 if unknown")
+    duration_months: int = Field(description="Performance period in months, or 0 if unknown")
+    magnitude_low: float = Field(description="Agency-stated magnitude of construction, low end, USD; 0 if not stated")
+    magnitude_high: float = Field(description="Agency-stated magnitude of construction, high end, USD; 0 if not stated")
+    set_aside: str = Field(description='Set-aside type, or "" for full and open')
+    delivery_method: str = Field(description='e.g. design-bid-build, design-build, lease, IDIQ; "" if unknown')
+    evaluation_criteria: list[str]
+    special_requirements: list[str]
+    key_requirements: list[str]
+
+    def to_analysis(self) -> "RfpAnalysis":
+        data = self.model_dump()
+        for key in ("gross_sf", "assumed_sf_if_missing", "construction_start_year", "duration_months", "magnitude_low", "magnitude_high"):
+            data[key] = data[key] or None
+        for key in ("city", "state", "set_aside", "delivery_method"):
+            data[key] = (data[key] or "").strip() or None
+        if data["state"]:
+            data["state"] = data["state"].upper()[:2]
+        return RfpAnalysis(**data)
+
+
 class CriterionScore(BaseModel):
     criterion: Criterion
     score: int = Field(description="0 (very poor) to 5 (excellent)")

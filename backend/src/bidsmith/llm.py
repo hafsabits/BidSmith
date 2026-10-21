@@ -61,7 +61,13 @@ class LLM:
         settings = get_settings()
         if client is None:
             # Falls back to ANTHROPIC_API_KEY / other SDK credential sources when .env has no key.
-            client = anthropic.Anthropic(api_key=settings.anthropic_api_key) if settings.anthropic_api_key else anthropic.Anthropic()
+            # With our own key, pin the endpoint so an inherited ANTHROPIC_BASE_URL (e.g. from another tool's
+            # shell) can't redirect the key elsewhere.
+            client = (
+                anthropic.Anthropic(api_key=settings.anthropic_api_key, base_url=settings.anthropic_base_url)
+                if settings.anthropic_api_key
+                else anthropic.Anthropic()
+            )
         self.client = client
         self.settings = settings
 
@@ -87,7 +93,8 @@ class LLM:
         effort: str | None = None,
         max_tokens: int = 16000,
     ) -> tuple[T, UsageRecord]:
-        response = self.client.messages.parse(
+        # Streamed so long outputs (the proposal) don't hit the SDK's non-streaming timeout guard.
+        with self.client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             system=system,
@@ -96,7 +103,8 @@ class LLM:
             thinking={"type": "adaptive"},
             **self._effort(model, effort),
             **self._extra(model),
-        )
+        ) as stream:
+            response = stream.get_final_message()
         if response.stop_reason == "refusal":
             raise LLMRefusal(f"{node}: model declined the request")
         if response.stop_reason == "max_tokens" or response.parsed_output is None:

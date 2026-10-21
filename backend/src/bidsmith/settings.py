@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/src/bidsmith/settings.py -> repo root is three parents above the package dir
@@ -11,6 +12,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=REPO_ROOT / ".env", extra="ignore")
 
     anthropic_api_key: str | None = None
+    # Read as BIDSMITH_ANTHROPIC_BASE_URL so the generic ANTHROPIC_BASE_URL in a parent shell is ignored.
+    anthropic_base_url: str = Field("https://api.anthropic.com", validation_alias="BIDSMITH_ANTHROPIC_BASE_URL")
     sam_api_key: str | None = None
     sam_env: str = "production"  # "production" (sam.gov key) or "alpha" (alpha.sam.gov prod-like key)
     sam_max_requests: int = 8  # per fetch; public keys allow only a few requests per day
