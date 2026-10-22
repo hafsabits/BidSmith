@@ -36,3 +36,24 @@ def test_run_lifecycle_over_http():
 
     events = client.get(f"/api/runs/{run_id}/events").text
     assert "node_done" in events and '"status": "done"' in events
+
+
+def test_events_resume_and_stop_when_finished():
+    set_llm(FakeLLM(score=1))  # no-bid path finishes quickly
+    client = TestClient(app)
+    run_id = client.post("/api/runs", json={"notice_id": "SAMPLE-001", "profile_id": "ryan"}).json()["run_id"]
+    wait_for(client, run_id, "waiting_review")
+    client.post(f"/api/runs/{run_id}/decision", json={"decision": "no_bid", "note": ""})
+    wait_for(client, run_id, "done")
+
+    full = client.get(f"/api/runs/{run_id}/events").text
+    ids = [int(line[3:]) for line in full.splitlines() if line.startswith("id:")]
+    assert ids == list(range(len(ids))) and len(ids) > 3
+
+    # Reconnect with Last-Event-ID: only later events are sent
+    resumed = client.get(f"/api/runs/{run_id}/events", headers={"Last-Event-ID": str(ids[-3])}).text
+    assert [int(l[3:]) for l in resumed.splitlines() if l.startswith("id:")] == ids[-2:]
+
+    # Finished and fully delivered: 204 so the browser stops reconnecting
+    done = client.get(f"/api/runs/{run_id}/events", headers={"Last-Event-ID": str(ids[-1])})
+    assert done.status_code == 204

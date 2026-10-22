@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useParams } from "react-router-dom";
 import { api, Decision, Estimate, FitResult, label, Project, RiskItem, RunEvent, RunResponse, usd } from "../api";
 import { Card, DecisionBadge, Empty, Pill, Spinner } from "../components/ui";
+import { useLiveRun } from "../useLiveRun";
 
 const STEPS = [
   { node: "analyst", title: "RFP Analyst", blurb: "Extracts scope, size, location, set-aside" },
@@ -15,34 +16,9 @@ const STEPS = [
   { node: "writer", title: "Proposal Writer", blurb: "Drafts sections citing own projects only" },
 ];
 
-function useRunEvents(runId: string) {
-  const [events, setEvents] = useState<RunEvent[]>([]);
-  const queryClient = useQueryClient();
-  useEffect(() => {
-    setEvents([]);
-    const source = new EventSource(api.eventsUrl(runId));
-    source.onmessage = (msg) => {
-      const event: RunEvent = JSON.parse(msg.data);
-      setEvents((prev) => (prev.some((e) => e.seq === event.seq) ? prev : [...prev, event]));
-      if (event.type === "status" || event.type === "node_done") queryClient.invalidateQueries({ queryKey: ["run", runId] });
-      if (event.type === "status" && (event.status === "done" || event.status === "error")) source.close();
-    };
-    source.onerror = () => {
-      /* browser retries automatically; the run query keeps polling as a fallback */
-    };
-    return () => source.close();
-  }, [runId, queryClient]);
-  return events;
-}
-
 export default function RunPage() {
   const { runId = "" } = useParams();
-  const events = useRunEvents(runId);
-  const { data: run } = useQuery({
-    queryKey: ["run", runId],
-    queryFn: () => api.run(runId),
-    refetchInterval: (q) => (q.state.data?.status === "running" ? 3000 : false),
-  });
+  const { run, events } = useLiveRun(runId);
   const { data: opp } = useQuery({
     queryKey: ["opportunity", run?.notice_id],
     queryFn: () => api.opportunity(run!.notice_id),

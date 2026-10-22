@@ -29,3 +29,18 @@ def test_no_bid_stops_after_review():
     assert state["fit"].decision == "no_bid"
     state = runner.resume_run(thread_id, {"decision": "no_bid"})
     assert "estimate" not in state and "proposal" not in state
+
+
+def test_checkpoint_allowlist_restores_app_types(caplog):
+    from bidsmith.graph.build import checkpoint_types
+    from bidsmith.schemas import Estimate, FitResult, ProposalDraft
+
+    assert ("bidsmith.schemas", "ProposalDraft") in checkpoint_types()
+    set_llm(FakeLLM(score=4))
+    thread_id, _ = runner.start_run("SAMPLE-001", "ryan")
+    runner.resume_run(thread_id, {"decision": "bid"})
+    state = runner.get_run_state(thread_id)  # read back from the checkpoint
+    assert isinstance(state["fit"], FitResult)
+    assert isinstance(state["estimate"], Estimate)
+    assert isinstance(state["proposal"], ProposalDraft)
+    assert "unregistered type" not in caplog.text

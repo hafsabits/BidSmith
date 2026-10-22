@@ -3,13 +3,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, label } from "../api";
 import { Card, DecisionBadge, Empty, Spinner } from "../components/ui";
+import { useLiveRun } from "../useLiveRun";
 
 function Column({ runId }: { runId: string }) {
-  const { data: run } = useQuery({
-    queryKey: ["run", runId],
-    queryFn: () => api.run(runId),
-    refetchInterval: (q) => (q.state.data?.status === "running" ? 2000 : false),
-  });
+  const { run } = useLiveRun(runId);
   const { data: profiles } = useQuery({ queryKey: ["profiles"], queryFn: api.profiles });
   if (!run) return <Spinner />;
   const fit = run.state.fit;

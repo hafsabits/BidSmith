@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
@@ -115,14 +115,21 @@ def decide(run_id: str, body: ReviewDecision):
 
 
 @app.get("/api/runs/{run_id}/events")
-async def events(run_id: str, after: int = -1):
+async def events(run_id: str, after: int = -1, last_event_id: str | None = Header(None)):
     run = _run_or_404(run_id)
+    # Browsers send Last-Event-ID when they reconnect; resume after it instead of replaying.
+    if last_event_id and last_event_id.isdigit():
+        after = max(after, int(last_event_id))
+    cursor = after + 1
+    if run.status in ("done", "error") and cursor >= len(run.events):
+        # Nothing left to send. 204 tells EventSource to stop reconnecting.
+        return Response(status_code=204)
 
     async def stream():
-        cursor = after + 1
+        nonlocal cursor
         while True:
             while cursor < len(run.events):
-                yield {"event": "message", "data": json.dumps(run.events[cursor])}
+                yield {"event": "message", "id": str(cursor), "data": json.dumps(run.events[cursor])}
                 cursor += 1
             if run.status in ("done", "error") and cursor >= len(run.events):
                 return

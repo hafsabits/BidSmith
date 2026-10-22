@@ -1,7 +1,12 @@
+import inspect
+
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
+from pydantic import BaseModel
 
+from bidsmith import schemas
 from bidsmith.graph.nodes.analyst import analyst
 from bidsmith.graph.nodes.estimator import estimator
 from bidsmith.graph.nodes.fit import fit
@@ -29,6 +34,20 @@ def after_review(state: RunState) -> str:
     return END if state["human_decision"] == "no_bid" else "estimator"
 
 
+def checkpoint_types() -> list[tuple[str, str]]:
+    """Every Pydantic model in bidsmith.schemas, i.e. everything run state may hold."""
+    return [
+        (schemas.__name__, name)
+        for name, obj in vars(schemas).items()
+        if inspect.isclass(obj) and issubclass(obj, BaseModel) and obj.__module__ == schemas.__name__
+    ]
+
+
+def make_checkpointer() -> InMemorySaver:
+    # An explicit allowlist: our own types load, anything else in a checkpoint is refused.
+    return InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=checkpoint_types()))
+
+
 def build_graph(checkpointer=None):
     g = StateGraph(RunState)
     g.add_node("analyst", analyst)
@@ -45,4 +64,4 @@ def build_graph(checkpointer=None):
     g.add_edge("estimator", "risk")
     g.add_edge("risk", "writer")
     g.add_edge("writer", END)
-    return g.compile(checkpointer=checkpointer or InMemorySaver())
+    return g.compile(checkpointer=checkpointer or make_checkpointer())
