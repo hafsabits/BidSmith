@@ -26,6 +26,9 @@ ITEM = {
 def settings(tmp_path, monkeypatch):
     s = Settings(sam_api_key="test-key", sam_env="alpha", sam_max_requests=8, data_dir=tmp_path)
     monkeypatch.setattr(sam, "get_settings", lambda: s)
+    from bidsmith import rfp_input
+
+    monkeypatch.setattr(rfp_input, "get_settings", lambda: s)
     return s
 
 
@@ -97,3 +100,51 @@ def test_live_results_listed_before_samples(settings, tmp_path):
     sam.fetch_opportunities(naics=["236220"], client=mock_client([]))
     ids = [o.notice_id for o in sam.load_opportunities()]
     assert ids == ["abc123", "SAMPLE-1"]
+
+
+# --- catalog: newest-first browsing, older batches on demand, lazy descriptions ---------------
+
+def test_older_batch_then_recent_pages(settings):
+    calls = []
+    items = [{**ITEM, "noticeId": f"{i:032x}", "postedDate": f"2026-10-{10 + i:02d}"} for i in range(8)]
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"totalRecords": 8, "opportunitiesData": items})
+
+    summary = sam.fetch_older_batch(batch=8, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert summary["added"] == 8 and summary["next_offset"] == 8
+    assert calls[0].url.params["offset"] == "0"
+
+    page = sam.recent_page(0, 5)
+    assert [o.posted_date.day for o in page["items"]] == [17, 16, 15, 14, 13]  # newest first
+    assert page["has_more_cached"] and not page["can_fetch_older"]  # all 8 remote records saved
+    assert all(o.description == "" and o.description_url for o in page["items"])
+
+
+def test_description_fetched_once_on_demand(settings):
+    sam.fetch_opportunities(naics=["236220"], with_descriptions=False, client=mock_client([]))
+    calls = []
+    first = sam.ensure_description("abc123", client=mock_client(calls))
+    again = sam.ensure_description("abc123", client=mock_client(calls))
+    assert first.description == "Build a 45,000 SF clinic." == again.description
+    assert len(calls) == 1
+
+
+def test_resolve_inputs(settings, monkeypatch):
+    from bidsmith import rfp_input
+
+    assert rfp_input.classify("https://sam.gov/opp/" + "a" * 32 + "/view") == ("sam_link", "a" * 32)
+    assert rfp_input.classify("https://sam.gov/workspace/contract/opp/" + "B" * 32 + "/view")[0] == "sam_link"
+    assert rfp_input.classify("A" * 32) == ("notice_id", "a" * 32)
+    assert rfp_input.classify("sample-004") == ("sample", "SAMPLE-004")
+    assert rfp_input.classify("Some pasted RFP text")[0] == "text"
+
+    text = "Design-build of a 20,000 SF clinic in Fargo, ND.\n" + "Requirements apply. " * 20
+    opp = rfp_input.resolve(text)
+    assert opp.notice_id.startswith("PASTE-") and opp.source == "pasted"
+    assert opp.title.startswith("Design-build of a 20,000 SF clinic")
+    assert sam.get_opportunity(opp.notice_id).description == text.strip()  # findable for runs
+
+    with pytest.raises(rfp_input.InputError, match="too short"):
+        rfp_input.resolve("tiny")

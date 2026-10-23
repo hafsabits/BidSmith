@@ -1,3 +1,4 @@
+from bidsmith import retrieval
 from bidsmith.graph.state import RunState
 from bidsmith.llm import as_json, get_llm
 from bidsmith.risk_rules import rule_risks
@@ -14,7 +15,9 @@ Likelihood and impact are integers 1-5. Give a concrete mitigation for each."""
 def risk(state: RunState) -> dict:
     opp, analysis, profile = state["opportunity"], state["analysis"], state["profile"]
     est = state.get("estimate")
-    rules = rule_risks(opp, analysis, profile, est, state.get("company_stats", {}), state.get("comps", []))
+    # Run on its own, the bid review hasn't loaded the company record yet; fetch it here.
+    stats = state.get("company_stats") or retrieval.company_stats(profile.id)
+    rules = rule_risks(opp, analysis, profile, est, stats, state.get("comps", []))
     estimate_summary = (
         {"class": est.aace_class, "total": round(est.total), "low": round(est.low), "high": round(est.high), "assumptions": est.assumptions}
         if est

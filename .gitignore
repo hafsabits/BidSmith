@@ -22,3 +22,4 @@ frontend/dist/
 runs/
 .claude/
 *.tsbuildinfo
+data/user_rfps.json

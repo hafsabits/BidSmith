@@ -1,5 +1,6 @@
 import re
 
+from bidsmith import retrieval
 from bidsmith.graph.state import RunState
 from bidsmith.llm import as_json, get_llm
 from bidsmith.schemas import Estimate, ProposalDraft
@@ -40,7 +41,8 @@ def price_table(est: Estimate) -> str:
 
 def fill_price_tokens(text: str, est: Estimate | None) -> str:
     if est is None:
-        return text
+        # Writer ran without the estimator: leave visible placeholders instead of numbers.
+        return re.sub(r"\{\{(\w+)\}\}", "[PLACEHOLDER — run the Estimator for pricing]", text)
     values = {
         "TOTAL": f"${est.total:,.0f}",
         "LOW": f"${est.low:,.0f}",
@@ -66,8 +68,10 @@ def render_markdown(state: RunState, draft: ProposalDraft) -> str:
 
 def writer(state: RunState) -> dict:
     opp, profile, analysis = state["opportunity"], state["profile"], state["analysis"]
-    fit, est = state["fit"], state.get("estimate")
-    own = state.get("own_projects", [])
+    fit, est = state.get("fit"), state.get("estimate")
+    own = state.get("own_projects")
+    if own is None:  # running without the bid review: retrieve past performance directly
+        own = retrieval.search_past_performance(profile.id, f"{analysis.building_type.replace('_', ' ')} {opp.title}. {analysis.scope_summary}", k=8)
     own_facts = [
         p.model_dump(include={"id", "title", "client", "award_value", "start_date", "end_date", "state", "building_type", "description"})
         for p in own
@@ -84,8 +88,8 @@ Solicitation:
 Analysis:
 {as_json(analysis)}
 
-Bid review strengths: {as_json(fit.strengths)}
-Bid review concerns: {as_json(fit.concerns)}
+Bid review strengths: {as_json(fit.strengths if fit else "bid review not run")}
+Bid review concerns: {as_json(fit.concerns if fit else "bid review not run")}
 Human reviewer note: {state.get("human_note") or "none"}
 
 Company's OWN past projects (the only ones you may cite):

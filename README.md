@@ -17,7 +17,8 @@ The demo profile is built around **Ryan Companies** (Minneapolis), using its pub
 - **Grounded, checkable evidence.** Every bid criterion cites project IDs from the knowledge base. Any ID the model didn't actually receive is dropped.
 - **An ownership rule for past performance.** A proposal may cite only the bidding company's own projects. Other firms' awards are used as market intelligence only. This is enforced in the retrieval layer, then re-checked after the writer runs.
 - **Human in the loop.** LangGraph pauses after the bid/no-bid recommendation. The user approves or overrides it before anything else happens.
-- **Swap the company, keep the system.** The Compare view runs the same opportunity for two companies, e.g. Ryan versus a fictional small business, and shows different decisions with different evidence.
+- **You drive the agents.** Paste an RFP, a SAM.gov link, or a notice ID. Run every agent step by step (each one stops with a summary before the next starts), or run a single agent on its own. The Estimator can also be run from a parameter form with no AI at all.
+- **Swappable data underneath.** The UI is built for Ryan, but the knowledge base and company profile are configuration: point the profile at another firm's data and the same agents work for it.
 - **Cost-aware.** Token usage and API cost are tracked per agent and shown for every run.
 
 ## Architecture
@@ -88,6 +89,13 @@ make api            # FastAPI on :8000
 make web            # React on :5173
 ```
 
+Open http://localhost:5173 and paste an RFP, a SAM.gov link (`https://sam.gov/opp/<id>/view`), a notice ID, or a sample ID such as `SAMPLE-001`. **Browse RFPs from SAM.gov** lists the newest saved notices five at a time. Pick how to run it:
+
+- **All agents, step by step:** each agent stops with a summary; choose **Continue** or **Run the rest**. The bid/no-bid decision always waits for you.
+- **One agent only:** Analyst, Bid/No-Bid, Estimator, Risk, or Proposal Writer. Each starts with the Analyst's reading of the RFP. The Estimator also takes a parameter form instead of an RFP.
+
+Attaching a PDF or Word file shows a placeholder for now: document processing isn't built yet.
+
 Or run one opportunity from the command line:
 
 ```bash
@@ -108,6 +116,8 @@ Keys only work in the environment that issued them. Then run:
 ```bash
 make fetch-sam
 ```
+
+The web app pages through SAM.gov the same way: **Browse RFPs from SAM.gov** reads saved notices newest first, five at a time, at no cost. When the saved list runs out, **Load older from SAM.gov** spends one request to fetch the next 100 notice summaries. Full description text is fetched only for an RFP you run (one request). SAM.gov can take minutes to answer, so this happens inside the run while the page shows its progress.
 
 Public keys allow only a few requests per day, so the fetcher works within a request budget (`SAM_MAX_REQUESTS`, default 8). Each NAICS search costs one request, and each notice's description costs one more. Results merge into `data/fixtures/sam_live_<env>.json`, and descriptions already saved are never requested again. If a run hits the limit, run it again the next day to fill in the rest. Live notices are listed before the samples; set `INCLUDE_SAMPLE_OPPORTUNITIES=false` to hide the samples.
 
@@ -150,7 +160,7 @@ backend/src/bidsmith/
   llm.py                  Anthropic SDK wrapper: structured output, tool loop, usage/cost
   graph/                  LangGraph state, nodes, build, runner
   api/                    FastAPI + SSE run manager
-frontend/src/pages/       Opportunities, Run, Knowledge Base, Compare
+frontend/src/pages/       Home (input + RFP drawer), Run (step-by-step agent results)
 config/profiles/          company profiles (swap point)
 data/                     cost tables, sample opportunities, sample CSV
 ```

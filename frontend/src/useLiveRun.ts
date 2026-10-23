@@ -37,7 +37,7 @@ export function useLiveRun(runId: string) {
     source.onmessage = (msg) => {
       const event: RunEvent = JSON.parse(msg.data);
       setEvents((prev) => (prev.some((e) => e.seq === event.seq) ? prev : [...prev, event]));
-      if (event.type === "node_done" || event.type === "status") refresh();
+      if (event.type !== "trace") refresh();
       if (event.type === "status" && (event.status === "done" || event.status === "error")) source.close();
     };
     // The browser reconnects on its own (resuming via Last-Event-ID); poll slowly meanwhile.

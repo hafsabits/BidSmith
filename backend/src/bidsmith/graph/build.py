@@ -48,20 +48,30 @@ def make_checkpointer() -> InMemorySaver:
     return InMemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=checkpoint_types()))
 
 
-def build_graph(checkpointer=None):
-    g = StateGraph(RunState)
-    g.add_node("analyst", analyst)
-    g.add_node("fit", fit)
-    g.add_node("human_review", human_review)
-    g.add_node("estimator", estimator)
-    g.add_node("risk", risk)
-    g.add_node("writer", writer)
+NODES = {"analyst": analyst, "fit": fit, "human_review": human_review, "estimator": estimator, "risk": risk, "writer": writer}
 
-    g.add_edge(START, "analyst")
-    g.add_edge("analyst", "fit")
-    g.add_edge("fit", "human_review")
-    g.add_conditional_edges("human_review", after_review, ["estimator", END])
-    g.add_edge("estimator", "risk")
-    g.add_edge("risk", "writer")
-    g.add_edge("writer", END)
+# Which agents each kind of run executes, in order. Single-agent runs still start with the
+# analyst, because every agent works from the analyst's structured reading of the RFP.
+PIPELINES: dict[str, list[str]] = {
+    "full": ["analyst", "fit", "human_review", "estimator", "risk", "writer"],
+    "analyst": ["analyst"],
+    "fit": ["analyst", "fit"],
+    "estimator": ["analyst", "estimator"],
+    "risk": ["analyst", "risk"],
+    "writer": ["analyst", "writer"],
+}
+
+
+def build_graph(pipeline: str = "full", checkpointer=None):
+    nodes = PIPELINES[pipeline]
+    g = StateGraph(RunState)
+    for name in nodes:
+        g.add_node(name, NODES[name])
+    g.add_edge(START, nodes[0])
+    for current, following in zip(nodes, nodes[1:]):
+        if current == "human_review":
+            g.add_conditional_edges("human_review", after_review, [following, END])
+        else:
+            g.add_edge(current, following)
+    g.add_edge(nodes[-1], END)
     return g.compile(checkpointer=checkpointer or make_checkpointer())

@@ -1,204 +1,201 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { useParams } from "react-router-dom";
-import { api, Decision, Estimate, FitResult, label, Project, RiskItem, RunEvent, RunResponse, usd } from "../api";
-import { Card, DecisionBadge, Empty, Pill, Spinner } from "../components/ui";
+import { ReactNode, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { AGENT_INFO } from "../agents";
+import { api, Decision, RunEvent, RunResponse } from "../api";
+import { AnalystResult, Details, EstimateResult, FitResultView, RiskResult, WriterResult } from "../components/AgentResults";
+import { DecisionBadge, Pill, Spinner } from "../components/ui";
 import { useLiveRun } from "../useLiveRun";
 
-const STEPS = [
-  { node: "analyst", title: "RFP Analyst", blurb: "Extracts scope, size, location, set-aside" },
-  { node: "fit", title: "Bid / No-Bid", blurb: "Scores fit against own record and market comps" },
-  { node: "human_review", title: "Human review", blurb: "Approve or override the recommendation" },
-  { node: "estimator", title: "Estimator", blurb: "Calls the cost engine (AACE Class 5/4)" },
-  { node: "risk", title: "Risk", blurb: "Rule checks + qualitative risk review" },
-  { node: "writer", title: "Proposal Writer", blurb: "Drafts sections citing own projects only" },
-];
+/** A node counts as finished once the state holds what it produces. */
+function finished(run: RunResponse): Set<string> {
+  const s = run.state;
+  const done = new Set<string>();
+  if (s.analysis) done.add("analyst");
+  if (s.fit) done.add("fit");
+  if (s.human_decision) done.add("human_review");
+  if (s.estimate) done.add("estimator");
+  if (s.risks) done.add("risk");
+  if (s.proposal_markdown) done.add("writer");
+  return done;
+}
 
 export default function RunPage() {
   const { runId = "" } = useParams();
   const { run, events } = useLiveRun(runId);
   const { data: opp } = useQuery({
     queryKey: ["opportunity", run?.notice_id],
-    queryFn: () => api.opportunity(run!.notice_id),
-    enabled: !!run,
+    queryFn: () => api.opportunity(run!.notice_id!),
+    enabled: !!run?.notice_id,
   });
 
   if (!run) return <Spinner />;
-  const s = run.state;
+  const done = finished(run);
+  const stoppedAtNoBid = run.state.human_decision === "no_bid";
+  const working = run.status === "running" ? run.pipeline.find((n) => !done.has(n)) : undefined;
+  const single = run.pipeline.length <= 2 && run.pipeline[0] === "analyst";
+  const latest = (node: string) => [...events].reverse().find((e) => e.type === "trace" && e.node === node);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Run {run.id} · bidding as {run.profile_id}</div>
-          <h1 className="mt-1 text-xl font-bold">{opp?.title.replace(/^SAMPLE:\s*/, "") ?? run.notice_id}</h1>
-          {s.analysis && <p className="mt-1 max-w-3xl text-sm text-slate-600">{s.analysis.scope_summary}</p>}
-        </div>
-        <div className="text-right text-xs text-slate-500">
-          <div>{run.total_tokens.toLocaleString()} tokens</div>
-          <div className="font-semibold text-slate-700">${run.total_cost_usd.toFixed(3)} API cost</div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div>
+        <Link to="/" className="text-xs text-slate-500 hover:text-slate-800">
+          ← New analysis
+        </Link>
+        <h1 className="mt-2 text-xl font-bold leading-snug">{opp?.title.replace(/^SAMPLE:\s*/, "") ?? (run.status === "error" ? "RFP not loaded" : "Loading the RFP…")}</h1>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+          {opp && <Pill>{opp.source === "pasted" ? "Pasted RFP" : opp.source === "sample" ? "Sample RFP" : "SAM.gov"}</Pill>}
+          <span>{single ? `${AGENT_INFO[run.pipeline[run.pipeline.length - 1]].name} only` : run.step ? "Step by step" : "All agents"}</span>
+          <span>· ${run.total_cost_usd.toFixed(3)} API cost</span>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-6 lg:sticky lg:top-20 lg:self-start">
-          <Timeline run={run} events={events} />
-        </div>
-        <div className="space-y-6">
-          {run.status === "error" && (
-            <Card title="Run failed">
-              <p className="text-sm text-rose-700">{run.error}</p>
-            </Card>
-          )}
-          {s.fit && <Scorecard fit={s.fit} own={s.own_projects ?? []} comps={s.comps ?? []} />}
-          {run.status === "waiting_review" && s.fit && <ReviewPanel runId={run.id} recommendation={s.fit.decision} />}
-          {s.human_decision === "no_bid" && run.status === "done" && (
-            <Card title="Pipeline stopped">
-              <p className="text-sm text-slate-600">The opportunity was marked no-bid, so no estimate or proposal was produced.</p>
-            </Card>
-          )}
-          {s.estimate && <EstimateCard est={s.estimate} notes={s.estimator_notes} />}
-          {s.risks && <RiskCard risks={s.risks} />}
-          {s.proposal_markdown && <ProposalCard run={run} />}
-          {s.usage && s.usage.length > 0 && <UsageCard run={run} />}
-        </div>
-      </div>
-    </div>
-  );
-}
+      <Stepper nodes={run.pipeline} done={done} working={working} next={run.next_node} skipped={stoppedAtNoBid} />
 
-function Timeline({ run, events }: { run: RunResponse; events: RunEvent[] }) {
-  const done = new Set(events.filter((e) => e.type === "node_done").map((e) => e.node));
-  (run.state.trace ?? []).forEach((t) => done.add(t.node));
-  const stopped = run.state.human_decision === "no_bid";
-  const firstPending = STEPS.find((st) => !done.has(st.node));
-  const traces = events.filter((e) => e.type === "trace");
-  const shownTraces = traces.length ? traces : (run.state.trace ?? []).map((t, i) => ({ ...t, seq: i, ts: 0, type: "trace" as const }));
+      {run.pipeline.map((node) => {
+        if (!done.has(node)) return null;
+        return (
+          <AgentCard key={node} node={node}>
+            <AgentOutput node={node} run={run} />
+          </AgentCard>
+        );
+      })}
 
-  return (
-    <Card title="Agent pipeline">
-      <ol className="space-y-3">
-        {STEPS.map((st) => {
-          const isDone = done.has(st.node);
-          const isSkipped = stopped && !isDone && ["estimator", "risk", "writer"].includes(st.node);
-          const isActive = !isDone && !isSkipped && firstPending?.node === st.node && run.status !== "error";
-          const waiting = isActive && st.node === "human_review" && run.status === "waiting_review";
-          return (
-            <li key={st.node} className="flex gap-3">
-              <div
-                className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                  isDone ? "bg-emerald-500 text-white" : waiting ? "bg-amber-400 text-white" : isActive ? "bg-brand-100" : "bg-slate-100 text-slate-400"
-                }`}
-              >
-                {isDone ? "✓" : waiting ? "!" : isActive ? <Spinner className="h-3 w-3" /> : isSkipped ? "–" : ""}
-              </div>
-              <div className={isSkipped ? "opacity-40" : ""}>
-                <div className="text-sm font-semibold">{st.title}</div>
-                <div className="text-xs text-slate-500">{waiting ? "Waiting for your decision" : st.blurb}</div>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-      <div className="mt-5 border-t border-slate-100 pt-4">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Trace</div>
-        <ul className="max-h-80 space-y-2 overflow-y-auto font-mono text-[11px] leading-snug text-slate-600">
-          {shownTraces.map((t) => (
-            <li key={t.seq}>
-              <span className="text-brand-600">{t.node}</span> {t.message}
-            </li>
-          ))}
-          {shownTraces.length === 0 && <li>Starting…</li>}
-        </ul>
-      </div>
-    </Card>
-  );
-}
+      {working && (
+        <AgentCard node={working} working>
+          <p className="text-sm text-slate-500">{latest(working)?.message ?? AGENT_INFO[working].does}</p>
+        </AgentCard>
+      )}
 
-function Scorecard({ fit, own, comps }: { fit: FitResult; own: Project[]; comps: Project[] }) {
-  const byId = useMemo(() => new Map([...own, ...comps].map((p) => [p.id, p])), [own, comps]);
-  return (
-    <Card title="Bid / no-bid scorecard" actions={<DecisionBadge decision={fit.decision} size="lg" />}>
-      <div className="flex flex-wrap items-center gap-6">
-        <div className="relative grid h-24 w-24 place-items-center rounded-full" style={{ background: `conic-gradient(#1d4ed8 ${fit.total * 3.6}deg, #e2e8f0 0)` }}>
-          <div className="grid h-[76px] w-[76px] place-items-center rounded-full bg-white">
-            <span className="text-2xl font-bold">{Math.round(fit.total)}</span>
-          </div>
-        </div>
-        <p className="min-w-[200px] flex-1 text-sm text-slate-700">{fit.summary}</p>
-      </div>
-      {fit.gates_triggered.length > 0 && (
-        <div className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
-          <div className="font-semibold">Hard gate triggered</div>
-          {fit.gates_triggered.map((g) => (
-            <div key={g}>{g}</div>
-          ))}
+      {run.status === "waiting_review" && run.state.fit && <ReviewPanel run={run} />}
+      {run.status === "paused" && run.next_node && <NextStep run={run} />}
+
+      {run.status === "error" && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+          <div className="font-semibold">The run stopped with an error</div>
+          <div className="mt-1">{run.error}</div>
         </div>
       )}
-      <div className="mt-5 space-y-4">
-        {fit.scores.map((c) => (
-          <div key={c.criterion}>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium capitalize">{label(c.criterion)}</span>
-              <span className="tabular-nums text-slate-500">{c.score}/5</span>
-            </div>
-            <div className="mt-1 h-2 rounded-full bg-slate-100">
-              <div className="h-2 rounded-full bg-brand-500" style={{ width: `${(c.score / 5) * 100}%` }} />
-            </div>
-            <p className="mt-1 text-xs text-slate-600">{c.rationale}</p>
-            {c.evidence_ids.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {c.evidence_ids.map((id) => {
-                  const p = byId.get(id);
-                  const isOwn = own.some((o) => o.id === id);
-                  return (
-                    <span key={id} title={p?.description} className={`rounded px-1.5 py-0.5 text-[11px] ${isOwn ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
-                      {isOwn ? "own" : p?.owner_company_id ?? "comp"}: {p?.title.slice(0, 48) ?? id}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <List title="Strengths" items={fit.strengths} tone="text-emerald-700" />
-        <List title="Concerns" items={fit.concerns} tone="text-rose-700" />
-      </div>
-    </Card>
-  );
-}
 
-function List({ title, items, tone }: { title: string; items: string[]; tone: string }) {
-  return (
-    <div>
-      <div className={`text-xs font-semibold uppercase tracking-wide ${tone}`}>{title}</div>
-      <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-slate-700">
-        {items.map((i) => (
-          <li key={i}>{i}</li>
-        ))}
-      </ul>
+      {run.status === "done" && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          {stoppedAtNoBid ? "Marked no-bid, so the estimate and proposal were skipped." : "All done."}{" "}
+          <Link to="/" className="font-semibold underline">
+            Analyze another RFP
+          </Link>
+        </div>
+      )}
+
+      <RunDetails run={run} events={events} />
     </div>
   );
 }
 
-function ReviewPanel({ runId, recommendation }: { runId: string; recommendation: Decision }) {
+function Stepper({ nodes, done, working, next, skipped }: { nodes: string[]; done: Set<string>; working?: string; next: string | null; skipped: boolean }) {
+  return (
+    <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-xs">
+      {nodes.map((n, i) => {
+        const isDone = done.has(n);
+        const isActive = n === working || n === next;
+        const isSkipped = skipped && !isDone;
+        return (
+          <li key={n} className="flex items-center gap-2">
+            <span
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ${
+                isDone ? "bg-emerald-50 text-emerald-700" : isActive ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200" : "bg-slate-100 text-slate-400"
+              } ${isSkipped ? "line-through opacity-60" : ""}`}
+            >
+              {isDone ? "✓" : n === working ? <Spinner className="h-3 w-3" /> : null}
+              {AGENT_INFO[n].name}
+            </span>
+            {i < nodes.length - 1 && <span className="text-slate-300">→</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function AgentCard({ node, working, children }: { node: string; working?: boolean; children: ReactNode }) {
+  return (
+    <section className={`rounded-xl border bg-white p-5 shadow-sm ${working ? "border-brand-200" : "border-slate-200"}`}>
+      <header className="mb-3 flex items-center gap-2">
+        {working && <Spinner className="h-3.5 w-3.5" />}
+        <h2 className="text-sm font-semibold">{AGENT_INFO[node].name}</h2>
+        {working && <span className="text-xs text-slate-500">working…</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function AgentOutput({ node, run }: { node: string; run: RunResponse }) {
+  const s = run.state;
+  switch (node) {
+    case "analyst":
+      return <AnalystResult analysis={s.analysis!} />;
+    case "fit":
+      return <FitResultView fit={s.fit!} own={s.own_projects ?? []} comps={s.comps ?? []} />;
+    case "human_review":
+      return (
+        <p className="text-sm text-slate-700">
+          You chose <DecisionBadge decision={s.human_decision!} />
+          {s.human_decision !== s.fit?.decision && " (overriding the recommendation)"}
+          {s.human_note && <> with the note “{s.human_note}”</>}.
+        </p>
+      );
+    case "estimator":
+      return <EstimateResult est={s.estimate!} notes={s.estimator_notes} />;
+    case "risk":
+      return <RiskResult risks={s.risks!} />;
+    case "writer":
+      return <WriterResult markdown={s.proposal_markdown!} placeholders={s.proposal?.placeholders ?? []} downloadUrl={api.proposalUrl(run.id)} />;
+    default:
+      return null;
+  }
+}
+
+function useRunAction(runId: string, fn: () => Promise<unknown>) {
   const queryClient = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["run", runId] }) });
+}
+
+function NextStep({ run }: { run: RunResponse }) {
+  const next = useRunAction(run.id, () => api.continueRun(run.id, false));
+  const rest = useRunAction(run.id, () => api.continueRun(run.id, true));
+  const info = AGENT_INFO[run.next_node!];
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+      <div className="text-sm">
+        <div className="font-semibold">Next: {info.name}</div>
+        <div className="text-slate-600">{info.does}</div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => rest.mutate()} disabled={next.isPending || rest.isPending} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
+          Run the rest
+        </button>
+        <button onClick={() => next.mutate()} disabled={next.isPending || rest.isPending} className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-700">
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewPanel({ run }: { run: RunResponse }) {
+  const recommendation = run.state.fit!.decision;
   const [decision, setDecision] = useState<Decision>(recommendation === "review" ? "bid" : recommendation);
   const [note, setNote] = useState("");
-  const submit = useMutation({
-    mutationFn: () => api.decide(runId, decision, note),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["run", runId] }),
-  });
+  const step = useRunAction(run.id, () => api.decide(run.id, decision, note, false));
+  const all = useRunAction(run.id, () => api.decide(run.id, decision, note, true));
+  const busy = step.isPending || all.isPending;
   return (
-    <Card title="Your decision" className="border-amber-300 ring-2 ring-amber-100">
-      <p className="text-sm text-slate-600">
-        The agents recommend <DecisionBadge decision={recommendation} />. Approve it or override before any estimating or drafting happens.
+    <section className="rounded-xl border border-amber-300 bg-white p-5 shadow-sm ring-2 ring-amber-100">
+      <h2 className="text-sm font-semibold">Your decision</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        The agents recommend <DecisionBadge decision={recommendation} />. Nothing is priced or drafted until you decide.
       </p>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-3 flex gap-2">
         {(["bid", "no_bid"] as Decision[]).map((d) => (
           <button
             key={d}
@@ -209,195 +206,63 @@ function ReviewPanel({ runId, recommendation }: { runId: string; recommendation:
           </button>
         ))}
       </div>
-      <textarea
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="Optional note for the writer, e.g. 'team with a healthcare designer'"
-        className="mt-3 w-full rounded-md border border-slate-300 p-2 text-sm"
-        rows={2}
-      />
-      <button
-        onClick={() => submit.mutate()}
-        disabled={submit.isPending}
-        className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
-      >
-        {decision === recommendation ? "Approve and continue" : "Override and continue"}
-      </button>
-    </Card>
-  );
-}
-
-function EstimateCard({ est, notes }: { est: Estimate; notes?: string }) {
-  const lines = [...est.lines].sort((a, b) => b.amount - a.amount);
-  const span = est.high - est.low;
-  const pointPct = ((est.total - est.low) / span) * 100;
-  return (
-    <Card title={`Conceptual estimate · AACE Class ${est.aace_class}`} actions={<Pill tone="amber">synthetic cost data</Pill>}>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Point estimate" value={usd(est.total)} />
-        <Stat label="Cost per SF" value={`${usd(est.cost_per_sf)}/SF`} />
-        <Stat label={`Range (${Math.round(est.accuracy_low_pct * 100)}% / +${Math.round(est.accuracy_high_pct * 100)}%)`} value={`${usd(est.low, true)} – ${usd(est.high, true)}`} />
-      </div>
-      <div className="relative mt-4 h-3 rounded-full bg-gradient-to-r from-emerald-200 via-brand-100 to-rose-200">
-        <div className="absolute -top-1 h-5 w-1 rounded bg-brand-900" style={{ left: `${pointPct}%` }} />
-      </div>
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="py-1">CSI division</th>
-              <th className="py-1 text-right">Amount</th>
-              <th className="w-1/3 py-1 pl-4">Share</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {lines.map((l) => (
-              <tr key={l.division}>
-                <td className="py-1.5">
-                  <span className="mr-2 font-mono text-xs text-slate-400">{l.division}</span>
-                  {l.name}
-                </td>
-                <td className="py-1.5 text-right tabular-nums">{usd(l.amount)}</td>
-                <td className="py-1.5 pl-4">
-                  <div className="h-1.5 rounded bg-slate-100">
-                    <div className="h-1.5 rounded bg-brand-500" style={{ width: `${(l.pct / lines[0].pct) * 100}%` }} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-            <tr className="font-semibold">
-              <td className="py-1.5">Hard cost</td>
-              <td className="py-1.5 text-right tabular-nums">{usd(est.hard_cost)}</td>
-              <td />
-            </tr>
-            {est.markups.map((m) => (
-              <tr key={m.name} className="text-slate-600">
-                <td className="py-1.5">
-                  {m.name} <span className="text-xs">({Math.round(m.pct * 100)}%)</span>
-                </td>
-                <td className="py-1.5 text-right tabular-nums">{usd(m.amount)}</td>
-                <td />
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Assumptions (computed by code)</div>
-          <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-slate-600">
-            {est.assumptions.map((a) => (
-              <li key={a}>{a}</li>
-            ))}
-          </ul>
-        </div>
-        {notes && (
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estimator reasoning</div>
-            <p className="mt-1 text-xs text-slate-600">{notes}</p>
-          </div>
+      {decision === "bid" && (
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Optional note for the proposal writer"
+          rows={2}
+          className="mt-3 w-full rounded-md border border-slate-300 p-2 text-sm"
+        />
+      )}
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        {decision === "bid" && run.step && (
+          <button onClick={() => all.mutate()} disabled={busy} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
+            Run the rest
+          </button>
         )}
+        <button onClick={() => (run.step ? step : all).mutate()} disabled={busy} className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-700">
+          {decision === "no_bid" ? "Stop here" : run.step ? "Continue to Estimator" : "Continue"}
+        </button>
       </div>
-    </Card>
+    </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function RunDetails({ run, events }: { run: RunResponse; events: RunEvent[] }) {
+  const usage = run.state.usage ?? [];
+  const log = events.filter((e) => e.type === "trace");
+  if (!usage.length && !log.length) return null;
   return (
-    <div className="rounded-lg bg-slate-50 p-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-0.5 text-lg font-bold tabular-nums">{value}</div>
-    </div>
-  );
-}
-
-function riskTone(score: number) {
-  if (score >= 15) return "bg-rose-600 text-white";
-  if (score >= 9) return "bg-amber-400 text-amber-950";
-  return "bg-emerald-100 text-emerald-800";
-}
-
-function RiskCard({ risks }: { risks: RiskItem[] }) {
-  return (
-    <Card title={`Risk register (${risks.length})`}>
-      {risks.length === 0 ? (
-        <Empty>No risks flagged.</Empty>
-      ) : (
-        <ul className="divide-y divide-slate-100">
-          {risks.map((r) => (
-            <li key={r.id} className="flex gap-3 py-3">
-              <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-md text-sm font-bold ${riskTone(r.score)}`} title="likelihood × impact">
-                {r.score}
-              </div>
-              <div className="text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{r.description}</span>
-                  <Pill>{r.category}</Pill>
-                  <Pill tone={r.source === "rule" ? "blue" : "slate"}>{r.source === "rule" ? "rule check" : "agent"}</Pill>
-                </div>
-                <div className="mt-0.5 text-xs text-slate-600">
-                  L{r.likelihood} × I{r.impact} · Mitigation: {r.mitigation}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-function ProposalCard({ run }: { run: RunResponse }) {
-  const placeholders = run.state.proposal?.placeholders ?? [];
-  return (
-    <Card
-      title="Proposal draft"
-      actions={
-        <a href={api.proposalUrl(run.id)} className="rounded-md border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-slate-50">
-          Download .md
-        </a>
-      }
-    >
-      {placeholders.length > 0 && (
-        <div className="mb-4 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
-          <span className="font-semibold">{placeholders.length} placeholders to fill:</span> {placeholders.slice(0, 6).join(" · ")}
-          {placeholders.length > 6 && " …"}
+    <div className="border-t border-slate-200 pt-4">
+      <Details label="run details (agent log and cost)">
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div>
+            <div className="text-xs font-semibold text-slate-500">Agent log</div>
+            <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto font-mono text-[11px] text-slate-600">
+              {log.map((e) => (
+                <li key={e.seq}>
+                  <span className="text-brand-600">{e.node}</span> {e.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-slate-500">Model usage · {run.total_tokens.toLocaleString()} tokens</div>
+            <table className="mt-1 w-full text-xs tabular-nums">
+              <tbody className="divide-y divide-slate-100">
+                {usage.map((u, i) => (
+                  <tr key={i}>
+                    <td className="py-1">{AGENT_INFO[u.node]?.name ?? u.node}</td>
+                    <td className="py-1 font-mono text-slate-500">{u.model}</td>
+                    <td className="py-1 text-right">${u.cost_usd.toFixed(4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      )}
-      <article className="prose prose-sm max-w-none prose-headings:font-semibold prose-table:text-xs">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{run.state.proposal_markdown ?? ""}</ReactMarkdown>
-      </article>
-    </Card>
-  );
-}
-
-function UsageCard({ run }: { run: RunResponse }) {
-  return (
-    <Card title="Model usage">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="py-1">Agent</th>
-              <th className="py-1">Model</th>
-              <th className="py-1 text-right">Input</th>
-              <th className="py-1 text-right">Output</th>
-              <th className="py-1 text-right">Cost</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 tabular-nums">
-            {run.state.usage!.map((u, i) => (
-              <tr key={i}>
-                <td className="py-1.5">{u.node}</td>
-                <td className="py-1.5 font-mono text-xs">{u.model}</td>
-                <td className="py-1.5 text-right">{u.input_tokens.toLocaleString()}</td>
-                <td className="py-1.5 text-right">{u.output_tokens.toLocaleString()}</td>
-                <td className="py-1.5 text-right">${u.cost_usd.toFixed(4)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+      </Details>
+    </div>
   );
 }

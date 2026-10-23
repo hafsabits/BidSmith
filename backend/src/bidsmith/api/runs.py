@@ -5,19 +5,25 @@ import time
 import traceback
 import uuid
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Callable, Literal
 
 from bidsmith.graph import runner
+from bidsmith.ingest.sam import SamApiError
+from bidsmith.rfp_input import InputError
+from bidsmith.schemas import Opportunity
 
-Status = Literal["running", "waiting_review", "done", "error"]
+Status = Literal["running", "paused", "waiting_review", "done", "error"]
 
 
 @dataclass
 class Run:
     id: str
-    notice_id: str
+    notice_id: str | None  # unknown until a SAM.gov reference has been looked up
     profile_id: str
+    pipeline: str
+    step: bool
     status: Status = "running"
+    next_node: str | None = None
     events: list[dict] = field(default_factory=list)
     error: str | None = None
     created_at: float = field(default_factory=time.time)
@@ -41,36 +47,50 @@ class RunManager:
 
         return handler
 
-    def _set_status(self, run: Run) -> None:
-        run.status = "waiting_review" if runner.is_waiting_for_review(run.id) else "done"
-        run.emit({"type": "status", "status": run.status})
-
-    def _work(self, run: Run, fn) -> None:
+    def _work(self, run: Run, fn: Callable[[], object]) -> None:
         try:
             fn()
-            self._set_status(run)
+            run.status, run.next_node = runner.run_status(run.id)
+            run.emit({"type": "status", "status": run.status, "next_node": run.next_node})
         except Exception as exc:
             run.status = "error"
-            run.error = f"{type(exc).__name__}: {exc}"
+            # Problems the user can act on (bad input, SAM.gov refusing) read as plain sentences.
+            run.error = str(exc) if isinstance(exc, (InputError, SamApiError)) else f"{type(exc).__name__}: {exc}"
             traceback.print_exc()
             run.emit({"type": "status", "status": "error", "error": run.error})
 
-    def start(self, notice_id: str, profile_id: str) -> Run:
-        run = Run(id=uuid.uuid4().hex[:12], notice_id=notice_id, profile_id=profile_id)
+    def _launch(self, run: Run, fn: Callable[[], object]) -> None:
+        run.status, run.next_node = "running", None
+        run.emit({"type": "status", "status": "running"})
+        threading.Thread(target=self._work, args=(run, fn), daemon=True).start()
+
+    def start(self, load: Callable[[], Opportunity], profile_id: str, pipeline: str, step: bool, from_sam: bool = False) -> Run:
+        """`load` produces the RFP. For SAM.gov references it calls SAM, so it runs on the worker thread."""
+        run = Run(id=uuid.uuid4().hex[:12], notice_id=None, profile_id=profile_id, pipeline=pipeline, step=step)
         with self._lock:
             self.runs[run.id] = run
-        run.emit({"type": "status", "status": "running"})
-        fn = lambda: runner.start_run(notice_id, profile_id, self._on_update(run), thread_id=run.id)  # noqa: E731
-        threading.Thread(target=self._work, args=(run, fn), daemon=True).start()
+
+        def work():
+            if from_sam:
+                run.emit({"type": "trace", "node": "analyst", "message": "Fetching the RFP from SAM.gov…"})
+            opportunity = load()
+            run.notice_id = opportunity.notice_id
+            run.emit({"type": "rfp", "notice_id": opportunity.notice_id})
+            runner.start_run(opportunity, profile_id, pipeline, step, self._on_update(run), thread_id=run.id)
+
+        self._launch(run, work)
         return run
 
-    def decide(self, run: Run, decision: str, note: str) -> None:
+    def proceed(self, run: Run, run_all: bool) -> None:
+        if run.status != "paused":
+            raise ValueError(f"Run is {run.status}, not paused between agents")
+        self._launch(run, lambda: runner.continue_run(run.id, run_all, self._on_update(run)))
+
+    def decide(self, run: Run, decision: str, note: str, run_all: bool = False) -> None:
         if run.status != "waiting_review":
             raise ValueError(f"Run is {run.status}, not waiting for review")
-        run.status = "running"
-        run.emit({"type": "status", "status": "running"})
-        fn = lambda: runner.resume_run(run.id, {"decision": decision, "note": note}, self._on_update(run))  # noqa: E731
-        threading.Thread(target=self._work, args=(run, fn), daemon=True).start()
+        answer = {"decision": decision, "note": note}
+        self._launch(run, lambda: runner.resume_run(run.id, answer, self._on_update(run), run_all))
 
     def get(self, run_id: str) -> Run:
         return self.runs[run_id]

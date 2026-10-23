@@ -120,6 +120,8 @@ class Opportunity(BaseModel):
     place_state: str | None = None
     description: str = ""
     url: str | None = None
+    description_url: str | None = None  # SAM.gov link to fetch the description on demand
+    source: Literal["sam", "sample", "pasted"] = "sam"
 
 
 # ---------------------------------------------------------------------------

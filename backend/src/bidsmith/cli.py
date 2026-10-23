@@ -54,20 +54,26 @@ def fetch_sam(
 
 @app.command()
 def run(
-    notice_id: str,
+    rfp: str = typer.Argument(..., help="SAMPLE-### id, SAM.gov notice id or link, or a path to a .txt file of RFP text"),
     profile: str = typer.Option("ryan"),
+    pipeline: str = typer.Option("full", help="full, analyst, fit, estimator, risk, or writer"),
     auto_approve: bool = typer.Option(True, help="Accept the bid/no-bid recommendation without prompting"),
 ):
-    """Run the full agent pipeline on one opportunity and print the results."""
-    from bidsmith.graph.runner import resume_run, start_run
+    """Run agents on one RFP and print the results."""
+    from pathlib import Path
 
-    thread_id, state = start_run(notice_id, profile, on_update=_print_update)
-    fit = state["fit"]
-    typer.echo(f"\nRecommendation: {fit.decision.upper()} ({fit.total:.0f}/100)")
-    decision = fit.decision
-    if not auto_approve:
-        decision = typer.prompt("Decision [bid/review/no_bid]", default=fit.decision)
-    state = resume_run(thread_id, {"decision": decision, "note": "CLI"}, on_update=_print_update)
+    from bidsmith.graph.runner import resume_run, run_status, start_run
+    from bidsmith.rfp_input import resolve
+
+    text = Path(rfp).read_text() if rfp.endswith(".txt") and Path(rfp).exists() else rfp
+    thread_id, state = start_run(resolve(text), profile, pipeline, step=False, on_update=_print_update)
+    if run_status(thread_id)[0] == "waiting_review":
+        fit = state["fit"]
+        typer.echo(f"\nRecommendation: {fit.decision.upper()} ({fit.total:.0f}/100)")
+        decision = fit.decision
+        if not auto_approve:
+            decision = typer.prompt("Decision [bid/review/no_bid]", default=fit.decision)
+        state = resume_run(thread_id, {"decision": decision, "note": "CLI"}, on_update=_print_update, run_all=True)
     typer.echo(json.dumps(_summary(state), indent=2, default=str))
 
 

@@ -1,15 +1,32 @@
 export type Decision = "bid" | "review" | "no_bid";
 
-export interface Profile {
+export interface Company {
   id: string;
   name: string;
   description: string;
   regions: string[];
-  building_types: string[];
   bonding_capacity: number;
-  set_aside_eligibility: string[];
-  is_demo_peer: boolean;
   project_count: number;
+}
+
+export type Pipeline = "full" | "analyst" | "fit" | "estimator" | "risk" | "writer";
+
+export interface RecentPage {
+  items: Opportunity[];
+  cached: number;
+  has_more_cached: boolean;
+  can_fetch_older: boolean;
+}
+
+export interface EstimateInputs {
+  building_type: string;
+  gross_sf: number;
+  sf_assumed: boolean;
+  state: string | null;
+  quality: "low" | "typical" | "high";
+  construction_midpoint_year: number;
+  design_build: boolean;
+  premiums: string[];
 }
 
 export interface Opportunity {
@@ -26,6 +43,7 @@ export interface Opportunity {
   place_state: string | null;
   description: string;
   url: string | null;
+  source: "sam" | "sample" | "pasted";
 }
 
 export interface Project {
@@ -108,13 +126,16 @@ export interface RunState {
   trace?: TraceItem[];
 }
 
-export type RunStatus = "running" | "waiting_review" | "done" | "error";
+export type RunStatus = "running" | "paused" | "waiting_review" | "done" | "error";
 
 export interface RunResponse {
   id: string;
-  notice_id: string;
+  notice_id: string | null;
   profile_id: string;
+  pipeline: string[];
+  step: boolean;
   status: RunStatus;
+  next_node: string | null;
   error: string | null;
   state: RunState;
   total_cost_usd: number;
@@ -130,7 +151,7 @@ export interface TraceItem {
 export interface RunEvent {
   seq: number;
   ts: number;
-  type: "trace" | "node_done" | "status";
+  type: "trace" | "node_done" | "status" | "rfp";
   node?: string;
   message?: string;
   detail?: string;
@@ -140,26 +161,34 @@ export interface RunEvent {
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...init });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text();
+    let message = text;
+    try {
+      message = JSON.parse(text).detail ?? text;
+    } catch {
+      /* not JSON */
+    }
+    throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+  }
   return res.json() as Promise<T>;
 }
 
+const post = <T,>(path: string, body: unknown) => http<T>(path, { method: "POST", body: JSON.stringify(body) });
+
 export const api = {
-  profiles: () => http<Profile[]>("/api/profiles"),
-  opportunities: () => http<Opportunity[]>("/api/opportunities"),
+  company: () => http<Company>("/api/company"),
+  samRecent: (offset: number, limit = 5) => http<RecentPage>(`/api/sam/recent?offset=${offset}&limit=${limit}`),
+  samOlder: () => post<{ added: number }>("/api/sam/older", {}),
+  samples: () => http<Opportunity[]>("/api/samples"),
   opportunity: (id: string) => http<Opportunity>(`/api/opportunities/${id}`),
-  projects: (owner?: string, q?: string) => {
-    const params = new URLSearchParams();
-    if (owner) params.set("owner", owner);
-    if (q) params.set("q", q);
-    params.set("limit", "60");
-    return http<Project[]>(`/api/projects?${params}`);
-  },
-  startRun: (notice_id: string, profile_id: string) =>
-    http<{ run_id: string }>("/api/runs", { method: "POST", body: JSON.stringify({ notice_id, profile_id }) }),
+  startRun: (input: string, pipeline: Pipeline, step: boolean) =>
+    post<{ run_id: string }>("/api/runs", { input, pipeline, step }),
   run: (id: string) => http<RunResponse>(`/api/runs/${id}`),
-  decide: (id: string, decision: Decision, note: string) =>
-    http<{ ok: boolean }>(`/api/runs/${id}/decision`, { method: "POST", body: JSON.stringify({ decision, note }) }),
+  continueRun: (id: string, run_all: boolean) => post<{ ok: boolean }>(`/api/runs/${id}/continue`, { run_all }),
+  decide: (id: string, decision: Decision, note: string, run_all: boolean) =>
+    post<{ ok: boolean }>(`/api/runs/${id}/decision`, { decision, note, run_all }),
+  estimate: (inputs: EstimateInputs) => post<Estimate>("/api/estimate", inputs),
   proposalUrl: (id: string) => `/api/runs/${id}/proposal.md`,
   eventsUrl: (id: string) => `/api/runs/${id}/events`,
 };

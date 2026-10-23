@@ -27,6 +27,8 @@ BASE_URLS = {
     "alpha": "https://api-alpha.sam.gov",
 }
 SEARCH_PATH = "/opportunities/v2/search"
+# SAM.gov can take minutes to answer (90 s for one description in testing), so allow long reads.
+SLOW_TIMEOUT = httpx.Timeout(30, read=300)
 DEFAULT_NAICS = ["236220", "236210"]
 # o = solicitation, k = combined synopsis/solicitation, p = presolicitation
 NOTICE_TYPES = "o,k,p"
@@ -74,6 +76,8 @@ def to_opportunity(item: dict, description: str) -> Opportunity:
         place_state=((pop.get("state") or {}).get("code")),
         description=description,
         url=item.get("uiLink"),
+        description_url=item.get("description") if str(item.get("description", "")).startswith("http") else None,
+        source="sam",
     )
 
 
@@ -197,17 +201,159 @@ def _read(path: Path) -> list[Opportunity]:
     return [Opportunity(**o) for o in json.loads(path.read_text())]
 
 
-def load_opportunities() -> list[Opportunity]:
-    """Live SAM.gov results first (if any), then the bundled illustrative samples."""
+def _write(path: Path, opps: list[Opportunity]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps([o.model_dump(mode="json") for o in opps], indent=2))
+
+
+def _samples() -> list[Opportunity]:
     settings = get_settings()
-    live = _read(settings.sam_live_file)
-    samples = _read(settings.sam_fixture) if settings.include_sample_opportunities else []
+    if not settings.include_sample_opportunities:
+        return []
+    return [o.model_copy(update={"source": "sample"}) for o in _read(settings.sam_fixture)]
+
+
+def load_opportunities() -> list[Opportunity]:
+    """Live SAM.gov results (newest posted first), then the bundled illustrative samples."""
+    live = _read(get_settings().sam_live_file)
     seen = {o.notice_id for o in live}
-    return live + [o for o in samples if o.notice_id not in seen]
+    return sort_recent(live) + [o for o in _samples() if o.notice_id not in seen]
 
 
 def get_opportunity(notice_id: str) -> Opportunity:
+    from bidsmith.rfp_input import get_pasted  # pasted RFPs live in their own store
+
     for o in load_opportunities():
         if o.notice_id == notice_id:
             return o
-    raise KeyError(notice_id)
+    return get_pasted(notice_id)
+
+
+# ---------------------------------------------------------------------------
+# Catalog: browse newest-first, pull an older batch only when the saved list runs out,
+# and fetch a description only when someone picks that RFP. Keeps daily requests low.
+# ---------------------------------------------------------------------------
+
+
+def sort_recent(opps: list[Opportunity]) -> list[Opportunity]:
+    return sorted(opps, key=lambda o: (o.posted_date is not None, o.posted_date), reverse=True)
+
+
+def _catalog_meta_path() -> Path:
+    settings = get_settings()
+    return settings.sam_live_file.with_name(f"sam_catalog_{settings.sam_env}.json")
+
+
+def _read_meta() -> dict:
+    path = _catalog_meta_path()
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _require_key() -> str:
+    settings = get_settings()
+    if not settings.sam_api_key:
+        raise SamApiError(
+            "SAM_API_KEY is not set. Generate one on the Account Details page of "
+            f"{'alpha.sam.gov' if settings.sam_env == 'alpha' else 'sam.gov'} and add it to .env."
+        )
+    return settings.sam_api_key
+
+
+def recent_page(offset: int, limit: int) -> dict:
+    live = sort_recent(_read(get_settings().sam_live_file))
+    meta = _read_meta()
+    total_remote = meta.get("total_records")
+    exhausted = total_remote is not None and meta.get("next_offset", 0) >= total_remote
+    return {
+        "items": live[offset : offset + limit],
+        "cached": len(live),
+        "has_more_cached": offset + limit < len(live),
+        "can_fetch_older": bool(get_settings().sam_api_key) and not exhausted,
+    }
+
+
+def fetch_older_batch(batch: int = 100, naics: str = "236220", days_back: int = 364, client: httpx.Client | None = None) -> dict:
+    """One SAM.gov request: the next page of notice summaries (no descriptions)."""
+    key = _require_key()
+    settings = get_settings()
+    meta = _read_meta()
+    today = date.today()
+    window = meta.get("window") or {
+        "postedFrom": (today - timedelta(days=days_back)).strftime("%m/%d/%Y"),
+        "postedTo": today.strftime("%m/%d/%Y"),
+    }
+    offset = meta.get("next_offset", 0)
+    params = {"api_key": key, **window, "ncode": naics, "ptype": NOTICE_TYPES, "limit": batch, "offset": offset}
+    owns = client is None
+    client = client or httpx.Client(timeout=SLOW_TIMEOUT)
+    try:
+        body = _check(client.get(search_url(settings.sam_env), params=params))
+    finally:
+        if owns:
+            client.close()
+    existing = {o.notice_id: o for o in _read(settings.sam_live_file)}
+    added = 0
+    for item in body.get("opportunitiesData") or []:
+        previous = existing.get(item["noticeId"])
+        opp = to_opportunity(item, previous.description if previous else "")
+        added += previous is None
+        existing[opp.notice_id] = opp
+    _write(settings.sam_live_file, list(existing.values()))
+    returned = len(body.get("opportunitiesData") or [])
+    meta = {"window": window, "next_offset": offset + returned, "total_records": body.get("totalRecords", 0), "naics": naics}
+    _catalog_meta_path().write_text(json.dumps(meta, indent=2))
+    return {"added": added, "returned": returned, **meta}
+
+
+def ensure_description(notice_id: str, client: httpx.Client | None = None) -> Opportunity:
+    """Fetch and save the description for one SAM notice if we don't have it yet (one request)."""
+    settings = get_settings()
+    live = _read(settings.sam_live_file)
+    for i, opp in enumerate(live):
+        if opp.notice_id != notice_id:
+            continue
+        if opp.description or not opp.description_url:
+            return opp
+        key = _require_key()
+        owns = client is None
+        client = client or httpx.Client(timeout=SLOW_TIMEOUT)
+        try:
+            resp = client.get(httpx.URL(opp.description_url).copy_merge_params({"api_key": key}))
+            data = _check(resp)
+        finally:
+            if owns:
+                client.close()
+        live[i] = opp.model_copy(update={"description": _strip_html(data.get("description", ""))})
+        _write(settings.sam_live_file, live)
+        return live[i]
+    return get_opportunity(notice_id)
+
+
+def lookup_notice(notice_id: str, client: httpx.Client | None = None) -> Opportunity:
+    """Find a notice by id: saved list first, otherwise one SAM.gov search by noticeid."""
+    try:
+        return get_opportunity(notice_id)
+    except KeyError:
+        pass
+    key = _require_key()
+    settings = get_settings()
+    today = date.today()
+    params = {
+        "api_key": key,
+        "noticeid": notice_id,
+        "postedFrom": (today - timedelta(days=364)).strftime("%m/%d/%Y"),
+        "postedTo": today.strftime("%m/%d/%Y"),
+        "limit": 1,
+    }
+    owns = client is None
+    client = client or httpx.Client(timeout=SLOW_TIMEOUT)
+    try:
+        items = _check(client.get(search_url(settings.sam_env), params=params)).get("opportunitiesData") or []
+    finally:
+        if owns:
+            client.close()
+    if not items:
+        raise KeyError(notice_id)
+    opp = to_opportunity(items[0], "")
+    _write(settings.sam_live_file, _read(settings.sam_live_file) + [opp])
+    return opp
