@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BidSmith Lite</title>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #1f2328;
+      --muted: #5c6370;
+      --border: #d9dbde;
+      --bid: #0f6e56;
+      --no-bid: #b42318;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161a;
+        --card: #1d2026;
+        --text: #e8e9eb;
+        --muted: #a0a6b0;
+        --border: #343842;
+        --bid: #3fbf95;
+        --no-bid: #f97066;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.5;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    .subtitle { margin: 0 0 24px; color: var(--muted); }
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
+      font: inherit;
+      resize: vertical;
+    }
+    button {
+      margin-top: 12px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      background: var(--text);
+      color: var(--bg);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .card {
+      margin-top: 24px;
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+    }
+    .verdict { margin: 0 0 8px; font-size: 1.4rem; }
+    .verdict.bid { color: var(--bid); }
+    .verdict.no_bid { color: var(--no-bid); }
+    .error { color: var(--no-bid); }
+    h2 { margin: 20px 0 8px; font-size: 1rem; }
+    ul { margin: 0; padding-left: 20px; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+    dt { color: var(--muted); }
+    dd { margin: 0; }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>BidSmith Lite</h1>
+    <p class="subtitle">Paste a federal RFP. Claude pulls out the key facts, and plain rules decide whether to bid.</p>
+
+    <form id="form">
+      <textarea id="rfp" placeholder="Paste the RFP text here..." required></textarea>
+      <button id="submit" type="submit">Analyze</button>
+    </form>
+
+    <section id="result" class="card" hidden>
+      <p id="verdict" class="verdict"></p>
+      <p id="company" class="subtitle"></p>
+      <h2>Why</h2>
+      <ul id="reasons"></ul>
+      <h2>What Claude found in the RFP</h2>
+      <dl id="facts"></dl>
+    </section>
+
+    <section id="error" class="card error" hidden></section>
+  </main>
+
+  <script>
+    const form = document.getElementById("form");
+    const rfp = document.getElementById("rfp");
+    const submit = document.getElementById("submit");
+    const result = document.getElementById("result");
+    const errorBox = document.getElementById("error");
+
+    const LABELS = {
+      summary: "Summary",
+      building_type: "Building type",
+      city: "City",
+      state: "State",
+      set_aside: "Set-aside",
+      value_low_usd: "Value (low)",
+      value_high_usd: "Value (high)",
+      response_deadline: "Response deadline",
+    };
+
+    const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+    function display(key, value) {
+      if (value === null) return "Not stated";
+      if (key.endsWith("_usd")) return dollars.format(value);
+      return String(value);
+    }
+
+    function showResult(data) {
+      const verdict = document.getElementById("verdict");
+      verdict.textContent = data.decision.verdict === "bid" ? "BID" : "NO BID";
+      verdict.className = "verdict " + data.decision.verdict;
+      document.getElementById("company").textContent = "Evaluated for " + data.company;
+
+      const reasons = document.getElementById("reasons");
+      reasons.replaceChildren();
+      for (const reason of data.decision.reasons) {
+        const li = document.createElement("li");
+        li.textContent = reason;
+        reasons.append(li);
+      }
+
+      const facts = document.getElementById("facts");
+      facts.replaceChildren();
+      for (const [key, label] of Object.entries(LABELS)) {
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        dd.textContent = display(key, data.facts[key]);
+        facts.append(dt, dd);
+      }
+
+      result.hidden = false;
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      result.hidden = true;
+      errorBox.hidden = true;
+      submit.disabled = true;
+      submit.textContent = "Reading the RFP...";
+
+      try {
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rfp_text: rfp.value }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          // FastAPI sends a string for our own errors and a list for validation errors (422).
+          showError(typeof data.detail === "string" ? data.detail : "That text is too long or not valid.");
+          return;
+        }
+        showResult(data);
+      } catch {
+        showError("Couldn't reach the server. Is it running?");
+      } finally {
+        submit.disabled = false;
+        submit.textContent = "Analyze";
+      }
+    });
+  </script>
+</body>
+</html>
